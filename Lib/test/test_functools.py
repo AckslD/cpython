@@ -602,7 +602,11 @@ class TestUpdateWrapper(unittest.TestCase):
                       updated=functools.WRAPPER_UPDATES):
         # Check attributes were assigned
         for name in assigned:
-            self.assertIs(getattr(wrapper, name), getattr(wrapped, name))
+            wrapped_attr = getattr(wrapped, name, None)
+            if callable(wrapped_attr):
+                self.assertEqual(getattr(wrapper, name), wrapped_attr)
+            else:
+                self.assertIs(getattr(wrapper, name, None), wrapped_attr)
         # Check attributes were updated
         for name in updated:
             wrapper_attr = getattr(wrapper, name)
@@ -636,6 +640,21 @@ class TestUpdateWrapper(unittest.TestCase):
         self.assertEqual(wrapper.attr, 'This is also a test')
         self.assertEqual(wrapper.__annotations__['a'], 'This is a new annotation')
         self.assertNotIn('b', wrapper.__annotations__)
+
+    def _cached_update(self):
+        @functools.lru_cache
+        def f(a):
+            pass
+        def wrapper(a):
+            pass
+        functools.update_wrapper(wrapper, f)
+        return wrapper, f
+
+    def test_cached_update(self):
+        wrapper, f = self._cached_update()
+        self.check_wrapper(wrapper, f)
+        self.assertTrue(hasattr(wrapper, 'cache_info'))
+        self.assertTrue(hasattr(wrapper, 'cache_clear'))
 
     @unittest.skipIf(sys.flags.optimize >= 2,
                      "Docstrings are omitted with -O2 and above")
@@ -1638,7 +1657,8 @@ class TestLRU:
             return 42
         g = self.module.lru_cache()(f)
         for attr in self.module.WRAPPER_ASSIGNMENTS:
-            self.assertEqual(getattr(g, attr), getattr(f, attr))
+            if hasattr(f, attr):
+                self.assertEqual(getattr(g, attr), getattr(f, attr))
 
     @threading_helper.requires_working_threading()
     def test_lru_cache_threaded(self):
